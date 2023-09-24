@@ -1,0 +1,67 @@
+version: "3"
+services:
+  app:
+    build:
+      context: ./
+      dockerfile: Dockerfile
+    env_file:
+      - ./config/.env.app
+    volumes:
+      - static_volume:/app/web/staticfiles/
+    depends_on:
+      - redis
+      - es
+    networks:
+      - elastic
+    ports:
+      - "8000:800"
+    image: 'fastapi-app-image'
+
+  redis:
+    image: redis:7.0.1
+    networks:
+      - elastic
+    ports:
+      - "6379:6379"
+
+  es:
+    image: elasticsearch:7.14.0
+    env_file:
+      - ./config/.env.es
+    environment:
+      - node.name=es01
+      - cluster.name=es-docker-cluster
+      - discovery.type=single-node
+    volumes:
+      - $HOME/elasticsearch/data:/var/lib/elasticsearch/data
+    networks:
+      - elastic
+    ports:
+      - 9200:9200
+      - 9300:9300
+
+  nginx:
+    build: ./nginx
+    volumes:
+      - static_volume:/app/web/staticfiles/
+    networks:
+      - elastic
+    ports:
+      - 80:80
+    depends_on:
+      - app
+
+  # tests:
+  #   image: 'fastapi-app-image'
+  #   entrypoint: >
+  #     sh -c "pip install -r ./tests/functional/requirements.txt
+  #     && python3 ./tests/functional/utils/wait_for_es.py
+  #     && python3 ./tests/functional/utils/wait_for_redis.py
+  #     && pytest ./tests/functional/src"
+
+volumes:
+  static_volume:
+
+networks:
+  elastic:
+    driver: bridge
