@@ -27,35 +27,18 @@ class BaseService:
     def __init__(self, redis: Redis, elastic: AsyncElasticsearch):
         self.redis = redis
         self.elastic = elastic
-
-    async def get_by_id(self, object_id: str, model_name: str) -> Optional:
-        object_ = await self._object_from_cache(object_id, model_name)
-        if not object_:
-            object_ = await self._get_object_from_elastic(object_id, model_name)
-        if not object_:
-            return None
-        await self._put_object_to_cache(object_, object_.uuid)
-        return object_
-
-    async def _get_object_from_elastic(self, object_id: str, model_name: str) -> Optional:
-        try:
-            index = BaseService.mapping[model_name]
-            doc = await self.elastic.get(index, object_id)
-        except NotFoundError:
-            return None
-        return getattr(sys.modules[__name__], model_name)(**doc['_source'])
-
+        
     async def search_objects(self, query: str, model_name: str, page: int, size: int) -> List:
         """Get objects by search query"""
-        cache_key = f'search_{query}_{model_name}_{page}_{size}'
-        objects = await self._list_from_cache(cache_key, model_name)
-        if objects:
-            logging.info("cache hit!")
-        if not objects:
-            objects = await self._search_objects_in_elastic(query, model_name, page, size)
-            logging.info("saved in redis!")
-            await self._put_list_to_cache(objects, cache_key)
-        return objects
+        cache_key = f'search_{query}_{model_name}_{page}_{size}'  # Cache key for storing and retrieving the results
+        objects = await self._list_from_cache(cache_key, model_name)  # Try to get objects from cache
+        if objects:  # If objects exist in cache
+            logging.info("cache hit!!! - search with {query}")  # Log cache hit
+        if not objects:  # If objects don't exist in cache
+            objects = await self._search_objects_in_elastic(query, model_name, page, size)  # Perform search in Elasticsearch
+            logging.info("cache miss - saved {query} in redis!")  # Log that the results are saved in cache
+            await self._put_list_to_cache(objects, cache_key)  # Store the results in cache
+        return objects  # Return the objects
 
     async def _search_objects_in_elastic(self, query: str, model_name: str, page: int, page_size: int) -> List:
         docs = []
